@@ -11,8 +11,9 @@ $source = Read-Host "Paste the SOURCE folder path"
 $destination = Read-Host "Paste the DESTINATION folder path"
 
 # Remove quotation marks if the user pasted paths with quotes
-$source = $source.Trim('"')
-$destination = $destination.Trim('"')
+# Also remove any ending backslash so relative paths calculate cleanly
+$source = $source.Trim('"').TrimEnd('\')
+$destination = $destination.Trim('"').TrimEnd('\')
 
 # Check that the source exists
 if (-not (Test-Path $source)) {
@@ -20,6 +21,7 @@ if (-not (Test-Path $source)) {
     Write-Host "ERROR: The source folder does not exist." -ForegroundColor Red
     Write-Host "Please check the path and try again."
     Write-Host "Source entered: $source"
+    Write-Host ""
     exit
 }
 
@@ -58,6 +60,7 @@ $confirm = Read-Host "Type COPY to start"
 if ($confirm -ne "COPY") {
     Write-Host ""
     Write-Host "Cancelled. No files were copied."
+    Write-Host ""
     exit
 }
 
@@ -75,6 +78,24 @@ Write-Host ""
 # /DCOPY:DAT copies folder Data, Attributes, and Timestamps
 # /TEE shows output on screen and saves it to the log
 robocopy $source $destination /E /Z /R:3 /W:10 /MT:8 /COPY:DAT /DCOPY:DAT /TEE /LOG:$robocopyLog
+
+# Save Robocopy exit code
+$robocopyExitCode = $LASTEXITCODE
+
+Write-Host ""
+
+if ($robocopyExitCode -ge 8) {
+    Write-Host "WARNING: Robocopy reported a serious error." -ForegroundColor Red
+    Write-Host "Robocopy exit code: $robocopyExitCode"
+    Write-Host "Please review the Robocopy log carefully:"
+    Write-Host $robocopyLog
+    Write-Host ""
+    Write-Host "The script will still continue with checksum verification so you can see exactly what copied and what did not."
+}
+else {
+    Write-Host "Robocopy completed without a serious error." -ForegroundColor Green
+    Write-Host "Robocopy exit code: $robocopyExitCode"
+}
 
 Write-Host ""
 Write-Host "STEP 2: Creating SHA1 checksum manifest for the source folder..." -ForegroundColor Yellow
@@ -112,7 +133,7 @@ $sourceHashes = foreach ($file in $sourceFiles) {
     }
     catch {
         [PSCustomObject]@{
-            RelativePath = $file.FullName
+            RelativePath = $file.FullName.Substring($source.Length).TrimStart('\')
             FullPath     = $file.FullName
             SizeBytes    = $file.Length
             SHA1         = "ERROR_READING_FILE"
@@ -164,7 +185,7 @@ $destinationHashes = foreach ($file in $destinationFiles) {
     }
     catch {
         [PSCustomObject]@{
-            RelativePath = $file.FullName
+            RelativePath = $file.FullName.Substring($destination.Length).TrimStart('\')
             FullPath     = $file.FullName
             SizeBytes    = $file.Length
             SHA1         = "ERROR_READING_FILE"
@@ -274,7 +295,16 @@ Write-Host "Checksum Summary:"
 $summary | Format-Table -AutoSize
 
 Write-Host ""
-Write-Host "What you want to see: MATCH for every file." -ForegroundColor Green
-Write-Host "If you see MISMATCH or MISSING_IN_DESTINATION, review the comparison report."
+Write-Host "What you want to see: MATCH for every source file." -ForegroundColor Green
+Write-Host "If you see MISMATCH, MISSING_IN_DESTINATION, ERROR_READING_SOURCE, or ERROR_READING_DESTINATION, review the comparison report." -ForegroundColor Yellow
+Write-Host "If you see EXTRA_IN_DESTINATION, that means the destination folder already had files that were not in the source folder."
 Write-Host ""
+
+if ($robocopyExitCode -ge 8) {
+    Write-Host "Reminder: Robocopy reported a serious error, so please review the Robocopy log too." -ForegroundColor Red
+    Write-Host $robocopyLog
+    Write-Host ""
+}
+
 Write-Host "You may now close this window."
+Write-Host ""
