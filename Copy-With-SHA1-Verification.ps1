@@ -1,9 +1,11 @@
+```powershell
 Write-Host ""
 Write-Host "Folder Copy + SHA1 Checksum Verification Tool" -ForegroundColor Cyan
 Write-Host "---------------------------------------------"
 Write-Host "This script copies files from one folder to another."
 Write-Host "It does NOT move or delete anything."
 Write-Host "It also creates SHA1 checksum reports to verify the copy."
+Write-Host "Transfer documentation will be saved inside the destination folder."
 Write-Host ""
 
 # Ask user for paths
@@ -32,14 +34,20 @@ if (-not (Test-Path $destination)) {
     New-Item -ItemType Directory -Path $destination -Force | Out-Null
 }
 
+# Create transfer documentation folder inside the destination folder
+$documentationFolder = Join-Path $destination "_transfer_documentation"
+
+if (-not (Test-Path $documentationFolder)) {
+    New-Item -ItemType Directory -Path $documentationFolder -Force | Out-Null
+}
+
 # Create timestamped report file names
 $timestamp = Get-Date -Format "yyyy-MM-dd_HH-mm-ss"
-$desktop = [Environment]::GetFolderPath("Desktop")
 
-$robocopyLog = Join-Path $desktop "Copy_Robocopy_Log_$timestamp.txt"
-$sourceManifest = Join-Path $desktop "Source_SHA1_Manifest_$timestamp.csv"
-$destinationManifest = Join-Path $desktop "Destination_SHA1_Manifest_$timestamp.csv"
-$compareReport = Join-Path $desktop "Checksum_Compare_Report_SHA1_$timestamp.csv"
+$robocopyLog = Join-Path $documentationFolder "Robocopy_Log_$timestamp.txt"
+$sourceManifest = Join-Path $documentationFolder "Source_SHA1_Manifest_$timestamp.csv"
+$destinationManifest = Join-Path $documentationFolder "Destination_SHA1_Manifest_$timestamp.csv"
+$compareReport = Join-Path $documentationFolder "Checksum_Compare_Report_SHA1_$timestamp.csv"
 
 Write-Host ""
 Write-Host "Source folder:"
@@ -48,7 +56,8 @@ Write-Host ""
 Write-Host "Destination folder:"
 Write-Host $destination
 Write-Host ""
-Write-Host "Reports will be saved to your Desktop."
+Write-Host "Transfer documentation folder:"
+Write-Host $documentationFolder
 Write-Host ""
 
 Write-Host "This process may take a long time for large folders." -ForegroundColor Yellow
@@ -76,8 +85,9 @@ Write-Host ""
 # /MT:8 copies multiple files at once
 # /COPY:DAT copies file Data, Attributes, and Timestamps
 # /DCOPY:DAT copies folder Data, Attributes, and Timestamps
+# /XD excludes the transfer documentation folder from the copy process
 # /TEE shows output on screen and saves it to the log
-robocopy $source $destination /E /Z /R:3 /W:10 /MT:8 /COPY:DAT /DCOPY:DAT /TEE /LOG:$robocopyLog
+robocopy $source $destination /E /Z /R:3 /W:10 /MT:8 /COPY:DAT /DCOPY:DAT /XD $documentationFolder /TEE /LOG:$robocopyLog
 
 # Save Robocopy exit code
 $robocopyExitCode = $LASTEXITCODE
@@ -153,7 +163,15 @@ Write-Host ""
 Write-Host "STEP 3: Creating SHA1 checksum manifest for the destination folder..." -ForegroundColor Yellow
 Write-Host ""
 
-$destinationFiles = @(Get-ChildItem -Path $destination -File -Recurse -ErrorAction SilentlyContinue)
+# Exclude the _transfer_documentation folder from destination checksums,
+# so the reports themselves do not appear as EXTRA_IN_DESTINATION.
+$destinationFiles = @(
+    Get-ChildItem -Path $destination -File -Recurse -ErrorAction SilentlyContinue |
+    Where-Object {
+        $_.FullName -notlike "$documentationFolder*"
+    }
+)
+
 $destinationTotal = $destinationFiles.Count
 $destinationCounter = 0
 
@@ -274,7 +292,10 @@ Write-Host ""
 Write-Host "DONE!" -ForegroundColor Green
 Write-Host ""
 
-Write-Host "Files created on your Desktop:"
+Write-Host "Files created in the transfer documentation folder:"
+Write-Host ""
+Write-Host "Transfer documentation folder:"
+Write-Host $documentationFolder
 Write-Host ""
 Write-Host "Robocopy log:"
 Write-Host $robocopyLog
@@ -300,11 +321,42 @@ Write-Host "If you see MISMATCH, MISSING_IN_DESTINATION, ERROR_READING_SOURCE, o
 Write-Host "If you see EXTRA_IN_DESTINATION, that means the destination folder already had files that were not in the source folder."
 Write-Host ""
 
-if ($robocopyExitCode -ge 8) {
-    Write-Host "Reminder: Robocopy reported a serious error, so please review the Robocopy log too." -ForegroundColor Red
-    Write-Host $robocopyLog
+# Final clear transfer result
+$problemStatuses = @(
+    "MISMATCH",
+    "MISSING_IN_DESTINATION",
+    "ERROR_READING_SOURCE",
+    "ERROR_READING_DESTINATION",
+    "EXTRA_IN_DESTINATION"
+)
+
+$problemFiles = @(
+    $comparison | Where-Object {
+        $_.Status -in $problemStatuses
+    }
+)
+
+Write-Host "FINAL TRANSFER RESULT" -ForegroundColor Cyan
+Write-Host "---------------------"
+
+if (($robocopyExitCode -lt 8) -and ($problemFiles.Count -eq 0)) {
+    Write-Host "TRANSFER PASSED: All source files matched destination files." -ForegroundColor Green
+}
+else {
+    Write-Host "REVIEW NEEDED: Some files were missing, mismatched, unreadable, extra, or Robocopy reported a serious error." -ForegroundColor Red
+
     Write-Host ""
+    Write-Host "Review these files:"
+    Write-Host $compareReport
+
+    if ($robocopyExitCode -ge 8) {
+        Write-Host ""
+        Write-Host "Robocopy also reported a serious error. Review this log:"
+        Write-Host $robocopyLog
+    }
 }
 
+Write-Host ""
 Write-Host "You may now close this window."
 Write-Host ""
+```
