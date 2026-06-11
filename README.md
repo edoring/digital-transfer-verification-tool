@@ -17,10 +17,13 @@ This tool is designed for archival, digitization, vendor scan, SharePoint/OneDri
 * Compares source and destination checksums
 * Creates a final CSV verification report
 * Includes progress bars during checksum creation and comparison
-* Saves all reports to the Desktop
+* Creates a `_transfer_documentation` folder inside the destination folder
+* Saves the Robocopy log, SHA1 manifests, and comparison report with the transferred files
+* Excludes the `_transfer_documentation` folder from the destination checksum comparison
 * Handles pasted paths with quotation marks or ending backslashes
 * Captures Robocopy exit codes and warns if a serious copy error occurs
 * Creates timestamped report files so older reports are not overwritten
+* Displays a clear final result: `TRANSFER PASSED` or `REVIEW NEEDED`
 
 ---
 
@@ -61,6 +64,8 @@ This script does **not**:
 * Change file contents
 * Upload files to the cloud
 * Replace a digital preservation system
+* Create descriptive metadata
+* Replace accessioning, processing, or long-term preservation documentation
 
 It is a copy and verification tool.
 
@@ -75,6 +80,9 @@ It is a copy and verification tool.
 * The script copies file data, attributes, and timestamps.
 * The script does not copy advanced security permissions, ownership metadata, or auditing information.
 * For the cleanest verification report, use an empty destination folder when possible.
+* The script creates a `_transfer_documentation` folder inside the destination folder.
+* The `_transfer_documentation` folder is excluded from destination checksum comparison so the report files do not appear as extra destination files.
+* The transfer documentation should stay with the transferred files as evidence of the copy and verification process.
 
 ---
 
@@ -173,6 +181,8 @@ The script uses Robocopy to copy files, subfolders, empty folders, timestamps, a
 
 Robocopy is run with options that support restartable copying, limited retries, multithreaded copying, and logging.
 
+The Robocopy log is saved inside the `_transfer_documentation` folder in the destination folder.
+
 ### 2. Check the Robocopy Result
 
 After the copy step, the script captures the Robocopy exit code.
@@ -195,11 +205,25 @@ Each manifest includes:
 * file size in bytes
 * SHA1 checksum
 
+The destination manifest does not include files inside the `_transfer_documentation` folder.
+
 ### 4. Compare Checksums
 
 The script compares source and destination files by relative path and SHA1 checksum.
 
 It then creates a final CSV report showing the status of each file.
+
+At the end, the script displays a clear final result:
+
+```text
+TRANSFER PASSED
+```
+
+or:
+
+```text
+REVIEW NEEDED
+```
 
 ---
 
@@ -227,7 +251,23 @@ This is especially helpful for large transfers or slow network drives.
 
 ## 📄 Reports Created
 
-All reports are saved to the Desktop.
+All reports are saved inside a `_transfer_documentation` folder in the destination folder.
+
+Example destination folder:
+
+```text
+Box001
+    Folder001
+        image001.tif
+        image002.tif
+    Folder002
+        document001.pdf
+    _transfer_documentation
+        Robocopy_Log_2026-06-11_14-30-00.txt
+        Source_SHA1_Manifest_2026-06-11_14-30-00.csv
+        Destination_SHA1_Manifest_2026-06-11_14-30-00.csv
+        Checksum_Compare_Report_SHA1_2026-06-11_14-30-00.csv
+```
 
 Each report includes a timestamp in the file name so that reports from previous runs are not overwritten.
 
@@ -238,7 +278,7 @@ A text log showing what happened during the copy.
 Example file name:
 
 ```text
-Copy_Robocopy_Log_2026-06-11_14-30-00.txt
+Robocopy_Log_2026-06-11_14-30-00.txt
 ```
 
 Review this log if Robocopy reports a serious error.
@@ -262,6 +302,8 @@ Example file name:
 ```text
 Destination_SHA1_Manifest_2026-06-11_14-30-00.csv
 ```
+
+The `_transfer_documentation` folder is excluded from the destination manifest.
 
 ### Checksum Comparison Report
 
@@ -298,6 +340,38 @@ MATCH
 
 ---
 
+## 🟢 Final Transfer Result
+
+At the end of the script, PowerShell will display one of two final results.
+
+### Transfer Passed
+
+```text
+TRANSFER PASSED: All source files matched destination files.
+```
+
+This means:
+
+* Robocopy did not report a serious error
+* Every source file was found in the destination
+* Every source file matched the destination file by SHA1 checksum
+* No files were unreadable
+* No extra files were found in the destination
+
+This is the result you want to see.
+
+### Review Needed
+
+```text
+REVIEW NEEDED: Some files were missing, mismatched, unreadable, extra, or Robocopy reported a serious error.
+```
+
+This means the transfer needs review before it should be treated as successfully verified.
+
+Review the checksum comparison report and, if needed, the Robocopy log.
+
+---
+
 ## ➕ About `EXTRA_IN_DESTINATION`
 
 `EXTRA_IN_DESTINATION` means the destination folder contains a file that was not found in the source folder.
@@ -307,6 +381,8 @@ This does **not always mean the copy failed**.
 It usually means the destination folder already had files in it before the script was run.
 
 To avoid extra-file warnings, start with an empty destination folder when possible.
+
+The script does not count the `_transfer_documentation` folder as extra content because that folder is intentionally created to store the transfer reports.
 
 ---
 
@@ -400,7 +476,7 @@ If copying from an external hard drive, flash drive, CD, DVD, or other physical 
 
 * Keep the media connected until the script finishes.
 * Do not unplug the device during the transfer.
-* Save the reports with the project documentation.
+* Save the reports with the transferred files.
 * If errors appear, check that the media is still connected and readable.
 * Some errors may indicate damaged or unreadable files.
 
@@ -413,7 +489,7 @@ If copying from an external hard drive, flash drive, CD, DVD, or other physical 
 * Keep the computer awake.
 * Do not close PowerShell while the script is running.
 * Expect destination checksums on network drives to take longer.
-* Save all CSV reports with the project or accession documentation.
+* Keep the `_transfer_documentation` folder with the transferred files.
 * Review the comparison report before deleting, moving, or changing anything.
 
 ---
@@ -423,9 +499,23 @@ If copying from an external hard drive, flash drive, CD, DVD, or other physical 
 A successful transfer should show:
 
 ```text
+TRANSFER PASSED: All source files matched destination files.
+```
+
+The checksum comparison report should show:
+
+```text
 MATCH
 ```
 
-for every source file in the checksum comparison report.
+for every source file.
+
+If the script shows:
+
+```text
+REVIEW NEEDED
+```
+
+review the checksum comparison report and the Robocopy log before treating the transfer as complete.
 
 If the script reports a Robocopy exit code of `8` or higher, review the Robocopy log even if some files show `MATCH` in the checksum report.
