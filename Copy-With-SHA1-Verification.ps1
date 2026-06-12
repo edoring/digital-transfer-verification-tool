@@ -12,38 +12,42 @@ Write-Host ""
 $source = Read-Host "Paste the SOURCE folder path"
 $destination = Read-Host "Paste the DESTINATION folder path"
 
-# Remove quotation marks if the user pasted paths with quotes
+# Clean up pasted paths
+# This removes extra spaces and quotation marks if the user pasted paths with quotes
 
-# Also remove any ending backslash so relative paths calculate cleanly
-
-$source = $source.Trim('"').TrimEnd('')
-$destination = $destination.Trim('"').TrimEnd('')
+$source = $source.Trim().Trim('"')
+$destination = $destination.Trim().Trim('"')
 
 # Check that the source exists
 
-if (-not (Test-Path $source)) {
-Write-Host ""
-Write-Host "ERROR: The source folder does not exist." -ForegroundColor Red
-Write-Host "Please check the path and try again."
-Write-Host "Source entered: $source"
-Write-Host ""
-exit
+if (-not (Test-Path -LiteralPath $source)) {
+    Write-Host ""
+    Write-Host "ERROR: The source folder does not exist." -ForegroundColor Red
+    Write-Host "Please check the path and try again."
+    Write-Host "Source entered: $source"
+    Write-Host ""
+    exit
 }
 
 # Create the destination folder if it does not already exist
 
-if (-not (Test-Path $destination)) {
-Write-Host ""
-Write-Host "Destination folder does not exist yet. Creating it now..." -ForegroundColor Yellow
-New-Item -ItemType Directory -Path $destination -Force | Out-Null
+if (-not (Test-Path -LiteralPath $destination)) {
+    Write-Host ""
+    Write-Host "Destination folder does not exist yet. Creating it now..." -ForegroundColor Yellow
+    New-Item -ItemType Directory -Path $destination -Force | Out-Null
 }
+
+# Get full resolved paths
+
+$source = (Resolve-Path -LiteralPath $source).Path
+$destination = (Resolve-Path -LiteralPath $destination).Path
 
 # Create transfer documentation folder inside the destination folder
 
 $documentationFolder = Join-Path $destination "_transfer_documentation"
 
-if (-not (Test-Path $documentationFolder)) {
-New-Item -ItemType Directory -Path $documentationFolder -Force | Out-Null
+if (-not (Test-Path -LiteralPath $documentationFolder)) {
+    New-Item -ItemType Directory -Path $documentationFolder -Force | Out-Null
 }
 
 # Create timestamped report file names
@@ -73,10 +77,10 @@ Write-Host ""
 $confirm = Read-Host "Type COPY to start"
 
 if ($confirm -ne "COPY") {
-Write-Host ""
-Write-Host "Cancelled. No files were copied."
-Write-Host ""
-exit
+    Write-Host ""
+    Write-Host "Cancelled. No files were copied."
+    Write-Host ""
+    exit
 }
 
 Write-Host ""
@@ -84,26 +88,17 @@ Write-Host "STEP 1: Copying files and folders..." -ForegroundColor Yellow
 Write-Host ""
 
 # Robocopy notes:
-
 # /E copies all subfolders, including empty folders
-
 # /Z uses restartable mode
-
 # /R:3 retries failed files 3 times
-
 # /W:10 waits 10 seconds between retries
-
 # /MT:8 copies multiple files at once
-
 # /COPY:DAT copies file Data, Attributes, and Timestamps
-
 # /DCOPY:DAT copies folder Data, Attributes, and Timestamps
-
 # /XD excludes the transfer documentation folder from the copy process
-
 # /TEE shows output on screen and saves it to the log
 
-robocopy $source $destination /E /Z /R:3 /W:10 /MT:8 /COPY:DAT /DCOPY:DAT /XD $documentationFolder /TEE /LOG:$robocopyLog
+& robocopy $source $destination /E /Z /R:3 /W:10 /MT:8 /COPY:DAT /DCOPY:DAT /XD $documentationFolder /TEE "/LOG:$robocopyLog"
 
 # Save Robocopy exit code
 
@@ -112,63 +107,60 @@ $robocopyExitCode = $LASTEXITCODE
 Write-Host ""
 
 if ($robocopyExitCode -ge 8) {
-Write-Host "WARNING: Robocopy reported a serious error." -ForegroundColor Red
-Write-Host "Robocopy exit code: $robocopyExitCode"
-Write-Host "Please review the Robocopy log carefully:"
-Write-Host $robocopyLog
-Write-Host ""
-Write-Host "The script will still continue with checksum verification so you can see exactly what copied and what did not."
+    Write-Host "WARNING: Robocopy reported a serious error." -ForegroundColor Red
+    Write-Host "Robocopy exit code: $robocopyExitCode"
+    Write-Host "Please review the Robocopy log carefully:"
+    Write-Host $robocopyLog
+    Write-Host ""
+    Write-Host "The script will still continue with checksum verification so you can see exactly what copied and what did not."
 }
 else {
-Write-Host "Robocopy completed without a serious error." -ForegroundColor Green
-Write-Host "Robocopy exit code: $robocopyExitCode"
+    Write-Host "Robocopy completed without a serious error." -ForegroundColor Green
+    Write-Host "Robocopy exit code: $robocopyExitCode"
 }
 
 Write-Host ""
 Write-Host "STEP 2: Creating SHA1 checksum manifest for the source folder..." -ForegroundColor Yellow
 Write-Host ""
 
-$sourceFiles = @(Get-ChildItem -Path $source -File -Recurse -ErrorAction SilentlyContinue)
+$sourceFiles = @(Get-ChildItem -LiteralPath $source -File -Recurse -ErrorAction SilentlyContinue)
 $sourceTotal = $sourceFiles.Count
 $sourceCounter = 0
 
 $sourceHashes = foreach ($file in $sourceFiles) {
-$sourceCounter++
+    $sourceCounter++
 
-```
-if ($sourceTotal -gt 0) {
-    $percent = [math]::Round(($sourceCounter / $sourceTotal) * 100, 2)
-}
-else {
-    $percent = 100
-}
-
-Write-Progress `
-    -Activity "Creating source SHA1 checksums" `
-    -Status "File $sourceCounter of $sourceTotal - $($file.Name)" `
-    -PercentComplete $percent
-
-try {
-    $relativePath = $file.FullName.Substring($source.Length).TrimStart('\')
-    $hash = Get-FileHash -Path $file.FullName -Algorithm SHA1
-
-    [PSCustomObject]@{
-        RelativePath = $relativePath
-        FullPath     = $file.FullName
-        SizeBytes    = $file.Length
-        SHA1         = $hash.Hash
+    if ($sourceTotal -gt 0) {
+        $percent = [math]::Round(($sourceCounter / $sourceTotal) * 100, 2)
     }
-}
-catch {
-    [PSCustomObject]@{
-        RelativePath = $file.FullName.Substring($source.Length).TrimStart('\')
-        FullPath     = $file.FullName
-        SizeBytes    = $file.Length
-        SHA1         = "ERROR_READING_FILE"
+    else {
+        $percent = 100
     }
-}
-```
 
+    Write-Progress `
+        -Activity "Creating source SHA1 checksums" `
+        -Status "File $sourceCounter of $sourceTotal - $($file.Name)" `
+        -PercentComplete $percent
+
+    try {
+        $relativePath = $file.FullName.Substring($source.Length).TrimStart('\')
+        $hash = Get-FileHash -LiteralPath $file.FullName -Algorithm SHA1
+
+        [PSCustomObject]@{
+            RelativePath = $relativePath
+            FullPath     = $file.FullName
+            SizeBytes    = $file.Length
+            SHA1         = $hash.Hash
+        }
+    }
+    catch {
+        [PSCustomObject]@{
+            RelativePath = $file.FullName.Substring($source.Length).TrimStart('\')
+            FullPath     = $file.FullName
+            SizeBytes    = $file.Length
+            SHA1         = "ERROR_READING_FILE"
+        }
+    }
 }
 
 Write-Progress -Activity "Creating source SHA1 checksums" -Completed
@@ -183,57 +175,55 @@ Write-Host ""
 Write-Host "STEP 3: Creating SHA1 checksum manifest for the destination folder..." -ForegroundColor Yellow
 Write-Host ""
 
-# Exclude the _transfer_documentation folder from destination checksums,
-
+# Exclude the _transfer_documentation folder from destination checksums
 # so the reports themselves do not appear as EXTRA_IN_DESTINATION.
 
+$documentationFolderWithSlash = $documentationFolder.TrimEnd('\') + '\'
+
 $destinationFiles = @(
-Get-ChildItem -Path $destination -File -Recurse -ErrorAction SilentlyContinue |
-Where-Object {
-$_.FullName -notlike "$documentationFolder*"
-}
+    Get-ChildItem -LiteralPath $destination -File -Recurse -ErrorAction SilentlyContinue |
+    Where-Object {
+        -not ($_.FullName.StartsWith($documentationFolderWithSlash, [System.StringComparison]::OrdinalIgnoreCase))
+    }
 )
 
 $destinationTotal = $destinationFiles.Count
 $destinationCounter = 0
 
 $destinationHashes = foreach ($file in $destinationFiles) {
-$destinationCounter++
+    $destinationCounter++
 
-```
-if ($destinationTotal -gt 0) {
-    $percent = [math]::Round(($destinationCounter / $destinationTotal) * 100, 2)
-}
-else {
-    $percent = 100
-}
-
-Write-Progress `
-    -Activity "Creating destination SHA1 checksums" `
-    -Status "File $destinationCounter of $destinationTotal - $($file.Name)" `
-    -PercentComplete $percent
-
-try {
-    $relativePath = $file.FullName.Substring($destination.Length).TrimStart('\')
-    $hash = Get-FileHash -Path $file.FullName -Algorithm SHA1
-
-    [PSCustomObject]@{
-        RelativePath = $relativePath
-        FullPath     = $file.FullName
-        SizeBytes    = $file.Length
-        SHA1         = $hash.Hash
+    if ($destinationTotal -gt 0) {
+        $percent = [math]::Round(($destinationCounter / $destinationTotal) * 100, 2)
     }
-}
-catch {
-    [PSCustomObject]@{
-        RelativePath = $file.FullName.Substring($destination.Length).TrimStart('\')
-        FullPath     = $file.FullName
-        SizeBytes    = $file.Length
-        SHA1         = "ERROR_READING_FILE"
+    else {
+        $percent = 100
     }
-}
-```
 
+    Write-Progress `
+        -Activity "Creating destination SHA1 checksums" `
+        -Status "File $destinationCounter of $destinationTotal - $($file.Name)" `
+        -PercentComplete $percent
+
+    try {
+        $relativePath = $file.FullName.Substring($destination.Length).TrimStart('\')
+        $hash = Get-FileHash -LiteralPath $file.FullName -Algorithm SHA1
+
+        [PSCustomObject]@{
+            RelativePath = $relativePath
+            FullPath     = $file.FullName
+            SizeBytes    = $file.Length
+            SHA1         = $hash.Hash
+        }
+    }
+    catch {
+        [PSCustomObject]@{
+            RelativePath = $file.FullName.Substring($destination.Length).TrimStart('\')
+            FullPath     = $file.FullName
+            SizeBytes    = $file.Length
+            SHA1         = "ERROR_READING_FILE"
+        }
+    }
 }
 
 Write-Progress -Activity "Creating destination SHA1 checksums" -Completed
@@ -249,13 +239,15 @@ Write-Host "STEP 4: Comparing source and destination checksums..." -ForegroundCo
 Write-Host ""
 
 $sourceByPath = @{}
+
 foreach ($item in $sourceHashes) {
-$sourceByPath[$item.RelativePath] = $item
+    $sourceByPath[$item.RelativePath] = $item
 }
 
 $destinationByPath = @{}
+
 foreach ($item in $destinationHashes) {
-$destinationByPath[$item.RelativePath] = $item
+    $destinationByPath[$item.RelativePath] = $item
 }
 
 $allPaths = @($sourceByPath.Keys + $destinationByPath.Keys) | Sort-Object -Unique
@@ -263,53 +255,50 @@ $compareTotal = $allPaths.Count
 $compareCounter = 0
 
 $comparison = foreach ($path in $allPaths) {
-$compareCounter++
+    $compareCounter++
 
-```
-if ($compareTotal -gt 0) {
-    $percent = [math]::Round(($compareCounter / $compareTotal) * 100, 2)
-}
-else {
-    $percent = 100
-}
+    if ($compareTotal -gt 0) {
+        $percent = [math]::Round(($compareCounter / $compareTotal) * 100, 2)
+    }
+    else {
+        $percent = 100
+    }
 
-Write-Progress `
-    -Activity "Comparing checksums" `
-    -Status "File $compareCounter of $compareTotal - $path" `
-    -PercentComplete $percent
+    Write-Progress `
+        -Activity "Comparing checksums" `
+        -Status "File $compareCounter of $compareTotal - $path" `
+        -PercentComplete $percent
 
-$src = $sourceByPath[$path]
-$dst = $destinationByPath[$path]
+    $src = $sourceByPath[$path]
+    $dst = $destinationByPath[$path]
 
-if ($null -eq $src) {
-    $status = "EXTRA_IN_DESTINATION"
-}
-elseif ($null -eq $dst) {
-    $status = "MISSING_IN_DESTINATION"
-}
-elseif ($src.SHA1 -eq "ERROR_READING_FILE") {
-    $status = "ERROR_READING_SOURCE"
-}
-elseif ($dst.SHA1 -eq "ERROR_READING_FILE") {
-    $status = "ERROR_READING_DESTINATION"
-}
-elseif ($src.SHA1 -eq $dst.SHA1) {
-    $status = "MATCH"
-}
-else {
-    $status = "MISMATCH"
-}
+    if ($null -eq $src) {
+        $status = "EXTRA_IN_DESTINATION"
+    }
+    elseif ($null -eq $dst) {
+        $status = "MISSING_IN_DESTINATION"
+    }
+    elseif ($src.SHA1 -eq "ERROR_READING_FILE") {
+        $status = "ERROR_READING_SOURCE"
+    }
+    elseif ($dst.SHA1 -eq "ERROR_READING_FILE") {
+        $status = "ERROR_READING_DESTINATION"
+    }
+    elseif ($src.SHA1 -eq $dst.SHA1) {
+        $status = "MATCH"
+    }
+    else {
+        $status = "MISMATCH"
+    }
 
-[PSCustomObject]@{
-    RelativePath         = $path
-    Status               = $status
-    SourceSizeBytes      = if ($src) { $src.SizeBytes } else { "" }
-    DestinationSizeBytes = if ($dst) { $dst.SizeBytes } else { "" }
-    SourceSHA1           = if ($src) { $src.SHA1 } else { "" }
-    DestinationSHA1      = if ($dst) { $dst.SHA1 } else { "" }
-}
-```
-
+    [PSCustomObject]@{
+        RelativePath         = $path
+        Status               = $status
+        SourceSizeBytes      = if ($src) { $src.SizeBytes } else { "" }
+        DestinationSizeBytes = if ($dst) { $dst.SizeBytes } else { "" }
+        SourceSHA1           = if ($src) { $src.SHA1 } else { "" }
+        DestinationSHA1      = if ($dst) { $dst.SHA1 } else { "" }
+    }
 }
 
 Write-Progress -Activity "Comparing checksums" -Completed
@@ -352,40 +341,37 @@ Write-Host ""
 # Final clear transfer result
 
 $problemStatuses = @(
-"MISMATCH",
-"MISSING_IN_DESTINATION",
-"ERROR_READING_SOURCE",
-"ERROR_READING_DESTINATION",
-"EXTRA_IN_DESTINATION"
+    "MISMATCH",
+    "MISSING_IN_DESTINATION",
+    "ERROR_READING_SOURCE",
+    "ERROR_READING_DESTINATION",
+    "EXTRA_IN_DESTINATION"
 )
 
 $problemFiles = @(
-$comparison | Where-Object {
-$_.Status -in $problemStatuses
-}
+    $comparison | Where-Object {
+        $_.Status -in $problemStatuses
+    }
 )
 
 Write-Host "FINAL TRANSFER RESULT" -ForegroundColor Cyan
 Write-Host "---------------------"
 
 if (($robocopyExitCode -lt 8) -and ($problemFiles.Count -eq 0)) {
-Write-Host "TRANSFER PASSED: All source files matched destination files." -ForegroundColor Green
+    Write-Host "TRANSFER PASSED: All source files matched destination files." -ForegroundColor Green
 }
 else {
-Write-Host "REVIEW NEEDED: Some files were missing, mismatched, unreadable, extra, or Robocopy reported a serious error." -ForegroundColor Red
+    Write-Host "REVIEW NEEDED: Some files were missing, mismatched, unreadable, extra, or Robocopy reported a serious error." -ForegroundColor Red
 
-```
-Write-Host ""
-Write-Host "Review these files:"
-Write-Host $compareReport
-
-if ($robocopyExitCode -ge 8) {
     Write-Host ""
-    Write-Host "Robocopy also reported a serious error. Review this log:"
-    Write-Host $robocopyLog
-}
-```
+    Write-Host "Review this file:"
+    Write-Host $compareReport
 
+    if ($robocopyExitCode -ge 8) {
+        Write-Host ""
+        Write-Host "Robocopy also reported a serious error. Review this log:"
+        Write-Host $robocopyLog
+    }
 }
 
 Write-Host ""
