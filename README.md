@@ -20,7 +20,7 @@ This tool is designed for archival, digitization, vendor scan, SharePoint/OneDri
 * Creates a `_transfer_documentation` folder inside the destination folder
 * Saves the Robocopy log, SHA1 manifests, and comparison report with the transferred files
 * Excludes the `_transfer_documentation` folder from the destination checksum comparison
-* Handles pasted paths with quotation marks or ending backslashes
+* Handles pasted paths with quotation marks, extra spaces, and normal folder paths copied from File Explorer
 * Captures Robocopy exit codes and warns if a serious copy error occurs
 * Creates timestamped report files so older reports are not overwritten
 * Displays a clear final result: `TRANSFER PASSED` or `REVIEW NEEDED`
@@ -78,8 +78,9 @@ It is a copy and verification tool.
 * When prompted, type `COPY` in all capital letters to begin.
 * Each report includes a date and time in the file name so older reports are not overwritten.
 * The script copies file data, attributes, and timestamps.
-* The script does not copy advanced security permissions, ownership metadata, or auditing information.
+* The script does **not** copy advanced security permissions, ownership metadata, or auditing information.
 * For the cleanest verification report, use an empty destination folder when possible.
+* Do **not** place the destination folder inside the source folder. This can cause confusing recursive copying or verification results.
 * The script creates a `_transfer_documentation` folder inside the destination folder.
 * The `_transfer_documentation` folder is excluded from destination checksum comparison so the report files do not appear as extra destination files.
 * The transfer documentation should stay with the transferred files as evidence of the copy and verification process.
@@ -88,7 +89,7 @@ It is a copy and verification tool.
 
 ## 📝 Saving the Script
 
-1. Open **Notepad**.
+1. Open Notepad.
 2. Paste the PowerShell script.
 3. Click **File > Save As**.
 4. Name the file:
@@ -104,6 +105,8 @@ All Files
 ```
 
 6. Save it somewhere easy to find, such as the Desktop.
+
+The file must end in `.ps1`, not `.txt`.
 
 ---
 
@@ -127,6 +130,31 @@ The script will then begin copying files and creating verification reports.
 
 ---
 
+## 🪟 If the PowerShell Window Opens and Closes Immediately
+
+If the PowerShell window opens and closes immediately, there may be an error that closes too quickly to read.
+
+To keep the window open:
+
+1. Open PowerShell first.
+2. Run the script with this command:
+
+```powershell
+powershell.exe -NoExit -ExecutionPolicy Bypass -File "C:\Path\To\Copy-With-SHA1-Verification.ps1"
+```
+
+Replace the example path with the actual location of the script on your computer.
+
+For example:
+
+```powershell
+powershell.exe -NoExit -ExecutionPolicy Bypass -File "C:\Users\YourName\Desktop\Copy-With-SHA1-Verification.ps1"
+```
+
+Quotation marks are important if the file path contains spaces.
+
+---
+
 ## 📍 Source and Destination Paths
 
 The **source folder** is the folder you are copying from.
@@ -135,14 +163,9 @@ Example source paths:
 
 ```text
 E:\Box001
-```
-
-```text
 C:\Users\YourName\Desktop\TransferFolder
-```
-
-```text
 C:\Users\YourName\OneDrive - Organization Name\Shared Folder
+\\ServerName\SharedFolder\Box001
 ```
 
 The **destination folder** is the folder you are copying to.
@@ -151,22 +174,18 @@ Example destination paths:
 
 ```text
 J:\Digital_Projects\Vendor_Scans\Box001
-```
-
-```text
 D:\Preservation_Copies\Box001
+\\ServerName\PreservationCopies\Box001
 ```
 
 If the destination folder does not exist, the script will try to create it.
 
-The script also cleans up pasted paths by removing quotation marks and ending backslashes. For example, these should both work:
+Use actual folder paths from File Explorer. Do not use SharePoint or OneDrive web links that begin with `https://`.
+
+The script cleans up pasted paths by removing quotation marks and extra spaces. For example, this should work:
 
 ```text
 "J:\Digital_Projects\Vendor_Scans\Box001"
-```
-
-```text
-J:\Digital_Projects\Vendor_Scans\Box001\
 ```
 
 ---
@@ -174,6 +193,8 @@ J:\Digital_Projects\Vendor_Scans\Box001\
 ## 🪜 Workflow
 
 The script runs in four main stages.
+
+---
 
 ### 1. Copy Files and Folders
 
@@ -183,13 +204,17 @@ Robocopy is run with options that support restartable copying, limited retries, 
 
 The Robocopy log is saved inside the `_transfer_documentation` folder in the destination folder.
 
+---
+
 ### 2. Check the Robocopy Result
 
 After the copy step, the script captures the Robocopy exit code.
 
-Robocopy exit codes below `8` are not treated as serious errors by this script. If Robocopy returns exit code `8` or higher, the script displays a warning and points to the Robocopy log.
+Robocopy exit codes below 8 are not treated as serious errors by this script. If Robocopy returns exit code 8 or higher, the script displays a warning and points to the Robocopy log.
 
 The script will still continue to the checksum steps so the final report can show what copied, what is missing, and what does not match.
+
+---
 
 ### 3. Create SHA1 Manifests
 
@@ -206,6 +231,8 @@ Each manifest includes:
 * SHA1 checksum
 
 The destination manifest does not include files inside the `_transfer_documentation` folder.
+
+---
 
 ### 4. Compare Checksums
 
@@ -271,6 +298,8 @@ Box001
 
 Each report includes a timestamp in the file name so that reports from previous runs are not overwritten.
 
+---
+
 ### Robocopy Log
 
 A text log showing what happened during the copy.
@@ -283,6 +312,8 @@ Robocopy_Log_2026-06-11_14-30-00.txt
 
 Review this log if Robocopy reports a serious error.
 
+---
+
 ### Source SHA1 Manifest
 
 A CSV listing source files and their SHA1 checksums.
@@ -292,6 +323,8 @@ Example file name:
 ```text
 Source_SHA1_Manifest_2026-06-11_14-30-00.csv
 ```
+
+---
 
 ### Destination SHA1 Manifest
 
@@ -304,6 +337,8 @@ Destination_SHA1_Manifest_2026-06-11_14-30-00.csv
 ```
 
 The `_transfer_documentation` folder is excluded from the destination manifest.
+
+---
 
 ### Checksum Comparison Report
 
@@ -344,6 +379,8 @@ MATCH
 
 At the end of the script, PowerShell will display one of two final results.
 
+---
+
 ### Transfer Passed
 
 ```text
@@ -360,6 +397,8 @@ This means:
 
 This is the result you want to see.
 
+---
+
 ### Review Needed
 
 ```text
@@ -372,11 +411,11 @@ Review the checksum comparison report and, if needed, the Robocopy log.
 
 ---
 
-## ➕ About `EXTRA_IN_DESTINATION`
+## ➕ About EXTRA_IN_DESTINATION
 
 `EXTRA_IN_DESTINATION` means the destination folder contains a file that was not found in the source folder.
 
-This does **not always mean the copy failed**.
+This does not always mean the copy failed.
 
 It usually means the destination folder already had files in it before the script was run.
 
@@ -390,10 +429,12 @@ The script does not count the `_transfer_documentation` folder as extra content 
 
 If the comparison report shows:
 
-* `MISMATCH`
-* `MISSING_IN_DESTINATION`
-* `ERROR_READING_SOURCE`
-* `ERROR_READING_DESTINATION`
+```text
+MISMATCH
+MISSING_IN_DESTINATION
+ERROR_READING_SOURCE
+ERROR_READING_DESTINATION
+```
 
 do not delete the original files.
 
@@ -468,6 +509,8 @@ In File Explorer:
 
 After the transfer is complete and verified, you can right-click the folder and choose **Free up space** if needed.
 
+Do not paste SharePoint or OneDrive web links into the script. Use the synced folder path from File Explorer.
+
 ---
 
 ## 💾 Physical Media Notes
@@ -518,4 +561,4 @@ REVIEW NEEDED
 
 review the checksum comparison report and the Robocopy log before treating the transfer as complete.
 
-If the script reports a Robocopy exit code of `8` or higher, review the Robocopy log even if some files show `MATCH` in the checksum report.
+If the script reports a Robocopy exit code of 8 or higher, review the Robocopy log even if some files show `MATCH` in the checksum report.
